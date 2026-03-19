@@ -1,43 +1,60 @@
+import streamlit as st
 import os
-from flask import Flask, request, jsonify, render_template
 import pickle
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
+# --- Page Configuration ---
+st.set_page_config(page_title="Sentiment Analyzer", page_icon="📝")
 
-# Global model variable
-model = None
-
-@app.before_first_request
+# --- 1. Model Loading (Replaces @app.before_first_request) ---
+# We use @st.cache_resource so the model only loads once and stays in memory
+@st.cache_resource
 def load_model():
-    global model
     try:
         model_path = os.path.join(os.path.dirname(__file__), 'best_sentiment_model.pkl')
         if os.path.exists(model_path):
             with open(model_path, 'rb') as f:
                 model = pickle.load(f)
-            print("✅ Model loaded on Render!")
+            return model
         else:
-            print("❌ Model file not found!")
+            st.error("❌ Model file not found!")
+            return None
     except Exception as e:
-        print(f"❌ Model error: {e}")
+        st.error(f"❌ Model error: {e}")
+        return None
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+model = load_model()
 
-@app.route('/predict', methods=['POST'])
-def predict():
+# --- 2. UI Layout (Replaces index.html) ---
+st.title("Sentiment Analysis App")
+st.write("Enter text below to predict its sentiment.")
+
+# Text input widget
+user_input = st.text_area("Input Text", placeholder="Type something here...")
+
+# --- 3. Prediction Logic (Replaces @app.route('/predict')) ---
+if st.button("Analyze Sentiment"):
     if model is None:
-        return jsonify({'error': 'Model not ready'}), 503
-    
-    try:
-        data = request.get_json()
-        text = data.get('text', '')
-        prediction = model.predict([text])
-        return jsonify({'sentiment': str(prediction[0])})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        st.warning("Model is not ready. Please check if the .pkl file exists.")
+    elif not user_input.strip():
+        st.info("Please enter some text first!")
+    else:
+        try:
+            # Predict
+            prediction = model.predict([user_input])
+            sentiment = str(prediction[0])
+            
+            # Display result with some styling
+            st.subheader("Result:")
+            if sentiment.lower() == 'positive': # Adjust based on your model's labels
+                st.success(f"The sentiment is: **{sentiment}**")
+            elif sentiment.lower() == 'negative':
+                st.error(f"The sentiment is: **{sentiment}**")
+            else:
+                st.info(f"The sentiment is: **{sentiment}**")
+                
+        except Exception as e:
+            st.error(f"An error occurred during prediction: {e}")
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+# Footer (Optional)
+st.divider()
+st.caption("Powered by Streamlit & Scikit-Learn")
